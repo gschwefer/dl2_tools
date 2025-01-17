@@ -51,7 +51,8 @@ class SimDataset(ABC):
             self.events["true_alt"]=u.Quantity(np.array(self.par_tree["MCTrueAlt"].array()),u.deg)
             self.events[f"{reco_energy_name}Energy"]=u.Quantity(np.array(self.par_tree[f"{reco_energy_name}Energy"].array()),u.TeV)
             self.events["mc_event_weight"]=np.array(self.par_tree["MCEventWeight"].array())
-            
+            self.events["true_core_x"]=np.array(self.par_tree["MCTrueCoreGroundX"].array())
+            self.events["true_core_y"]=np.array(self.par_tree["MCTrueCoreGroundY"].array())
         self._set_reco_energy_column(reco_energy_name)
         
 
