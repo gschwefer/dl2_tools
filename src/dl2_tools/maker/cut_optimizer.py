@@ -314,10 +314,10 @@ class PercentileCutCalculator(CutCalculator):
         elif isinstance(datalist, DiffuseSetList):
             assert len(datalist) == 1
             # max_radius = np.max(datalist.get_radii())
-            offset_axis = IRFBinning.make_diffuse_signal_offset_axis(
+            offset_axis = IRFBinning.make_diffuse_signal_offset_bins(
                 datalist, self.N_offset_bins
             )
-            offset_axis.name = offset_axis_name
+            offset_axis._name = offset_axis_name
             # offset_axis = MapAxis.from_bounds(
             #    0.0 * u.deg, max_radius, self.N_offset_bins, name=offset_axis_name
             # )

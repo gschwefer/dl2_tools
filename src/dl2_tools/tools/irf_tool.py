@@ -119,7 +119,7 @@ class IRFMakerTool(Tool):
 
     signal_powerlaw_params = List(
         Float,
-        default_value=[1e-11, 2],
+        default_value=[1e-11, -2],
         minlen=2,
         maxlen=2,
         help="Parameters to weight signal to a powerlaw spectrum",
@@ -180,6 +180,11 @@ class IRFMakerTool(Tool):
         default_value=False,
     ).tag(config=True)
 
+    save_suffix = Unicode(
+        help="Suffix to add to the saved IRF files",
+        default_value="",
+    ).tag(config=True)
+
     aliases = {
         "signal-input": "IRFMakerTool.signal_input_files",
         "signal-type": "IRFMakerTool.signal_type",
@@ -225,8 +230,8 @@ class IRFMakerTool(Tool):
             self.observation = PointSourceObservationHandler()
             for inp_file in self.signal_input_files:
                 self.observation.add_signal(
-                    PointSourceSignalSet.from_path(
-                        inp_file, self.energy_reco, self.geometry_reco, self.gh_score
+                    PointSourceSignalSet(
+                        inp_file, reco_energy_name=self.energy_reco, geometry_reco_name=self.geometry_reco, gh_score_name=self.gh_score
                     )
                 )
 
@@ -234,11 +239,11 @@ class IRFMakerTool(Tool):
             self.observation = DiffuseObservationHandler()
             assert len(self.signal_input_files) == 1
             self.observation.add_signal(
-                DiffuseSignalSet.from_path(
+                DiffuseSignalSet(
                     self.signal_input_files[0],
-                    self.energy_reco,
-                    self.geometry_reco,
-                    self.gh_score,
+                    reco_energy_name=self.energy_reco,
+                    geometry_reco_name=self.geometry_reco,
+                    gh_score_name=self.gh_score,
                 )
             )
 
@@ -305,8 +310,8 @@ class IRFMakerTool(Tool):
         if len(self.background_input_files) > 0:
             for inp_file in self.background_input_files:
                 self.observation.add_background(
-                    BackgroundSet.from_path(
-                        inp_file, self.energy_reco, self.geometry_reco, self.gh_score
+                    BackgroundSet(
+                        inp_file, reco_energy_name=self.energy_reco, geometry_reco_name=self.geometry_reco, gh_score_name=self.gh_score
                     )
                 )
 
@@ -357,7 +362,7 @@ class IRFMakerTool(Tool):
 
         if len(cuts) > 0:
 
-            self.observation.set_signal_cuts(cuts, "reco_source_fov_offset")
+            self.observation.set_signal_cuts(cuts, "true_source_fov_offset")
             if len(self.background_input_files) > 0:
                 self.observation.set_background_cuts(cuts, "reco_source_fov_offset")
 
@@ -384,13 +389,13 @@ class IRFMakerTool(Tool):
         Saving IRFs and make plots
         """
 
-        self.irfs.save_Aeff_fits(self.output_dir, overwrite=self.overwrite)
+        self.irfs.save_Aeff_fits(self.output_dir, overwrite=self.overwrite, suffix=self.save_suffix)
 
-        self.irfs.save_PSF_fits(self.output_dir, overwrite=self.overwrite)
+        self.irfs.save_PSF_fits(self.output_dir, overwrite=self.overwrite, suffix=self.save_suffix)
 
-        self.irfs.save_Edisp_fits(self.output_dir, overwrite=self.overwrite)
+        self.irfs.save_Edisp_fits(self.output_dir, overwrite=self.overwrite, suffix=self.save_suffix)
 
-        self.irfs.save_bkg_model_fits(self.output_dir, overwrite=self.overwrite)
+        self.irfs.save_bkg_model_fits(self.output_dir, overwrite=self.overwrite, suffix=self.save_suffix)
 
         if self.save_plots:
 

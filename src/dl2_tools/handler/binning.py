@@ -2,7 +2,7 @@ import numpy as np
 from gammapy.maps import MapAxis
 import astropy.units as u
 from ctapipe.core import Component
-from ctapipe.core.traits import List, Int
+from ctapipe.core.traits import List, Int, Float
 
 from .data_lists import PointSourceSignalSetList, DiffuseSignalSetList
 
@@ -18,36 +18,58 @@ class IRFBinning(Component):
         -signal field-of-view offset
         -background field-of-view offset
         -distance from true direction for psf
+
+    Configurable bin lists are plain numbers [min, max, n_edges]
+    (energies in TeV, psf offsets in deg, migration unitless).
+    The resulting number of bins is n_edges - 1.
     """
 
     energy_true_bins = List(
-        default_value=[0.01 * u.TeV, 200 * u.TeV, 50],
-        help="Emin, Emax and number of bins",
+        Float(),
+        default_value=[0.01, 200.0, 50],
+        minlen=3,
+        maxlen=3,
+        help="Emin [TeV], Emax [TeV] and number of bin edges (n_bins = n_edges - 1)",
     ).tag(config=True)
 
     energy_reco_bins = List(
-        default_value=[0.01 * u.TeV, 200 * u.TeV, 50],
-        help="Emin, Emax and number of bins",
+        Float(),
+        default_value=[0.01, 200.0, 50],
+        minlen=3,
+        maxlen=3,
+        help="Emin [TeV], Emax [TeV] and number of bin edges (n_bins = n_edges - 1)",
     ).tag(config=True)
 
     mig_bins = List(
-        default_value=[0.01, 10, 50],
-        help="Emin, Emax and number of bins",
+        Float(),
+        default_value=[0.01, 10.0, 50],
+        minlen=3,
+        maxlen=3,
+        help=(
+            "Min and max of the migration E_reco/E_true and number of bin edges "
+            "(n_bins = n_edges - 1)"
+        ),
     ).tag(config=True)
 
     psf_off_bins = List(
-        default_value=[0.0001 * u.deg, 2 * u.deg, 1000],
-        help="Emin, Emax and number of bins",
+        Float(),
+        default_value=[0.0001, 2.0, 1000],
+        minlen=3,
+        maxlen=3,
+        help=(
+            "Min [deg] and max [deg] of the distance from the true source position "
+            "and number of bin edges (n_bins = n_edges - 1)"
+        ),
     ).tag(config=True)
 
     n_sig_offset_bins = Int(
         default_value=10,
-        help="Number of signal offset bins if signal is diffuse",
+        help="Number of signal offset bin edges if signal is diffuse (n_bins = n_edges - 1)",
     ).tag(config=True)
 
     n_bkg_offset_bins = Int(
         default_value=10,
-        help="Number of background offset bins",
+        help="Number of background offset bin edges (n_bins = n_edges - 1)",
     ).tag(config=True)
 
     def __init__(self, observation, config=None, parent=None):
@@ -56,6 +78,7 @@ class IRFBinning(Component):
         Created axes are:
 
         -true energy
+        -reco energy
         -energy migration relative to the true energy
         -signal field-of-view offset
         -background field-of-view offset
@@ -77,38 +100,28 @@ class IRFBinning(Component):
         super().__init__(config=config, parent=parent)
 
         self.energy_true = MapAxis(
-            np.geomspace(
-                self.energy_true_bins[0],
-                self.energy_true_bins[1],
-                self.energy_true_bins[2],
-            ),
+            self._geom_edges(self.energy_true_bins, u.TeV),
             interp="log",
             name="true_energy",
             node_type="edges",
         )
 
         self.energy_reco = MapAxis(
-            np.geomspace(
-                self.energy_reco_bins[0],
-                self.energy_reco_bins[1],
-                self.energy_reco_bins[2],
-            ),
+            self._geom_edges(self.energy_reco_bins, u.TeV),
             interp="log",
             name="reco_energy",
             node_type="edges",
         )
 
         self.migration = MapAxis(
-            np.geomspace(self.mig_bins[0], self.mig_bins[1], self.mig_bins[2]),
+            self._geom_edges(self.mig_bins, u.dimensionless_unscaled),
             interp="log",
             name="migration",
             node_type="edges",
         )
 
         self.psf_offset = MapAxis(
-            np.geomspace(
-                self.psf_off_bins[0], self.psf_off_bins[1], self.psf_off_bins[2]
-            ),
+            self._geom_edges(self.psf_off_bins, u.deg),
             interp="log",
             name="psf_offset",
             node_type="edges",
@@ -119,6 +132,34 @@ class IRFBinning(Component):
             N_sig_bins=self.n_sig_offset_bins,
             N_bkg_bins=self.n_bkg_offset_bins,
         )
+
+    @staticmethod
+    def _geom_edges(bins, unit):
+        """
+        Make logarithmically spaced bin edges from a [min, max, n_edges] list.
+
+        Parameters
+        ----------
+        bins : list of float
+            Minimum, maximum and number of bin edges
+        unit : astropy.units.Unit
+            Unit to attach to the edges
+
+        Returns
+        -------
+        astropy.units.Quantity
+            Bin edges
+        """
+        vmin, vmax, n_edges = bins
+        if n_edges != int(n_edges) or n_edges < 2:
+            raise ValueError(
+                f"Number of bin edges must be an integer >= 2, got {n_edges}"
+            )
+        if not 0 < vmin < vmax:
+            raise ValueError(
+                f"Bin limits must satisfy 0 < min < max, got min={vmin}, max={vmax}"
+            )
+        return np.geomspace(vmin, vmax, int(n_edges)) * unit
 
     def make_offset_bins_from_observation(
         self, observation, N_sig_bins=10, N_bkg_bins=10
@@ -131,9 +172,9 @@ class IRFBinning(Component):
         observation : observation_handler.ObservationHandler
             An observation, either diffuse or point source
         N_sig_bins : int, optional
-            Number of signal bins, by default 10
+            Number of signal bin edges, by default 10
         N_bkg_bins : int, optional
-            Number of background bins, by default 10
+            Number of background bin edges, by default 10
         """
         self._make_signal_offset_bins_from_observation(observation, N_sig_bins)
         if (
@@ -150,7 +191,7 @@ class IRFBinning(Component):
         observation : observation_handler.ObservationHandler
             An observation, either diffuse or point source
         N_sig_bins : int
-            Number of signal bins
+            Number of signal bin edges
         """
 
         if isinstance(observation.signal, PointSourceSignalSetList):
@@ -165,14 +206,14 @@ class IRFBinning(Component):
     def make_diffuse_signal_offset_bins(diffuse_signal_list, N_sig_bins):
         """
         From a DiffuseSignalSetList, generate an axis
-        with N_sig_bins equal-sized field-of-view offset bins.
+        with N_sig_bins - 1 equal-sized field-of-view offset bins.
 
         Parameters
         ----------
         diffuse_signal_list : data_lists.DiffuseSignalSetList
-            List of dl2 datasets from point-source simulations
+            List of dl2 datasets from diffuse simulations
         N_sig_bins : Int
-            Number of field-of-view offset bins
+            Number of field-of-view offset bin edges
 
         Returns
         -------
@@ -303,7 +344,7 @@ class IRFBinning(Component):
         observation : observation_handler.ObservationHandler
             An observation, either diffuse or point source
         N_bkg_bins : int
-            Number of background bins
+            Number of background bin edges
         """
 
         radii = observation.background.get_radii()

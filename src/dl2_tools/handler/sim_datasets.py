@@ -16,7 +16,7 @@ class SimDataset(ABC):
     Base class for handling dl2 datasets
     """
 
-    def __init__(self, path,reco_energy_name, hess_root=False,obs_time=1 * u.s,siminfo_dict=None):
+    def __init__(self, path,reco_energy_name, hess_root=False,obs_time=1 * u.s,siminfo_dict=None,new_table_loader=False):
         """
         Constructor of the Base Class. Initializes Datset from ctapipe TableLoader
 
@@ -33,14 +33,24 @@ class SimDataset(ABC):
         self.obs_time = obs_time
         self.hess_root=hess_root
         if not self.hess_root:
-            self.loader = TableLoader(
-            path,
-            load_true_images=True,
-            load_dl1_images=False,
-            load_dl1_parameters=True,
-            load_simulated=True,
-            load_dl2=True,
-        )
+            if new_table_loader:
+                self.loader = TableLoader(
+                    path,
+                    true_images=True,
+                    dl1_images=False,
+                    dl1_parameters=True,
+                    simulated=True,
+                    dl2=True,
+                )
+            else:
+                self.loader = TableLoader(
+                path,
+                load_true_images=True,
+                load_dl1_images=False,
+                load_dl1_parameters=True,
+                load_simulated=True,
+                load_dl2=True,
+            )
             self.events=QTable(self.loader.read_subarray_events())
         else:
             self.events=QTable()
@@ -181,6 +191,13 @@ class SimDataset(ABC):
             self.events["reco_az"] = self.events[f"{geometry_reco_name}_az"]
             self.events["reco_alt"] = self.events[f"{geometry_reco_name}_alt"]
 
+        self.events["true_source_fov_offset"] = angular_separation(
+            self.pointing_direction.az,
+            self.pointing_direction.alt,
+            self.events["true_az"],
+            self.events["true_alt"],
+        )
+
         if not self.hess_root:
             if geometry_reco_name != "ImPACTReconstructor":
                 self.events["geometry_reco_is_valid"] = self.events[
@@ -292,8 +309,8 @@ class SimDataset(ABC):
 
 
 class DiffuseDataset(SimDataset):
-    def __init__(self, path, reco_energy_name,hess_root=False, obs_time=1 * u.s,siminfo_dict=None):
-        super().__init__(path, reco_energy_name, hess_root, obs_time,siminfo_dict)
+    def __init__(self, path, reco_energy_name,hess_root=False, obs_time=1 * u.s,siminfo_dict=None,new_table_loader=False):
+        super().__init__(path, reco_energy_name, hess_root, obs_time,siminfo_dict,new_table_loader)
         if not self.hess_root:
             sim_config = QTable(self.loader.read_simulation_configuration())
             obs_info = QTable(self.loader.read_observation_information())
@@ -341,8 +358,8 @@ class DiffuseDataset(SimDataset):
 
 
 class PointSourceDataset(SimDataset):
-    def __init__(self, path,reco_energy_name,hess_root=False, obs_time=1 * u.s,siminfo_dict=None):
-        super().__init__(path,reco_energy_name,hess_root, obs_time,siminfo_dict)
+    def __init__(self, path,reco_energy_name,hess_root=False, obs_time=1 * u.s,siminfo_dict=None,new_table_loader=False):
+        super().__init__(path,reco_energy_name,hess_root, obs_time,siminfo_dict,new_table_loader)
 
         if not self.hess_root:
             sim_config = QTable(self.loader.read_simulation_configuration())
@@ -417,9 +434,10 @@ class SignalSet(SimDataset):
         gh_score_name=None,
         hess_root=False,
         obs_time=1 * u.s,
-        siminfo_dict=None
+        siminfo_dict=None,
+        new_table_loader=False
     ):
-        super().__init__(path,reco_energy_name,hess_root, obs_time,siminfo_dict)
+        super().__init__(path,reco_energy_name,hess_root, obs_time,siminfo_dict,new_table_loader)
         if self.hess_root:
             self.events[f"{geometry_reco_name}AzEvent"]=u.Quantity(np.array(self.par_tree[f"{geometry_reco_name}AzEvent"].array()),u.deg)
             self.events[f"{geometry_reco_name}AltEvent"]=u.Quantity(np.array(self.par_tree[f"{geometry_reco_name}AltEvent"].array()),u.deg)
@@ -435,12 +453,7 @@ class SignalSet(SimDataset):
 
     def _set_geometry_columns(self, geometry_reco_name):
         super()._set_geometry_columns(geometry_reco_name)
-        self.events["true_source_fov_offset"] = angular_separation(
-            self.pointing_direction.az,
-            self.pointing_direction.alt,
-            self.events["true_az"],
-            self.events["true_alt"],
-        )
+
 
         self.events["theta"] = angular_separation(
             self.events["reco_az"],
@@ -484,10 +497,11 @@ class PointSourceSignalSet(SignalSet, PointSourceDataset):
         gh_score_name=None,
         hess_root=False,
         obs_time=1 * u.s,
-        siminfo_dict=None
+        siminfo_dict=None,
+        new_table_loader=False
     ):
         super().__init__(
-            path, reco_energy_name, geometry_reco_name, gh_score_name,hess_root, obs_time,siminfo_dict
+            path, reco_energy_name, geometry_reco_name, gh_score_name,hess_root, obs_time,siminfo_dict,new_table_loader
         )
 
 
@@ -500,10 +514,11 @@ class DiffuseSignalSet(SignalSet, DiffuseDataset):
         gh_score_name=None,
         hess_root=False,
         obs_time=1 * u.s,
-        siminfo_dict=None
+        siminfo_dict=None,
+        new_table_loader=False
     ):
         super().__init__(
-            path, reco_energy_name, geometry_reco_name, gh_score_name,hess_root, obs_time, siminfo_dict
+            path, reco_energy_name, geometry_reco_name, gh_score_name,hess_root, obs_time, siminfo_dict,new_table_loader
         )
 
 
@@ -516,9 +531,10 @@ class BackgroundSet(DiffuseDataset):
         gh_score_name=None,
         hess_root=False,
         obs_time=1 * u.s,
-        siminfo_dict=None
+        siminfo_dict=None,
+        new_table_loader=False
     ):
-        super().__init__(path,reco_energy_name,hess_root, obs_time,siminfo_dict)
+        super().__init__(path,reco_energy_name,hess_root, obs_time,siminfo_dict,new_table_loader)
         if self.hess_root:
             self.events[f"{geometry_reco_name}AzEvent"]=u.Quantity(np.array(self.par_tree[f"{geometry_reco_name}AzEvent"].array()),u.deg)
             self.events[f"{geometry_reco_name}AltEvent"]=u.Quantity(np.array(self.par_tree[f"{geometry_reco_name}AltEvent"].array()),u.deg)
